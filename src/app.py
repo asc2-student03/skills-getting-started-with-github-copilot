@@ -8,8 +8,10 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 import os
 from pathlib import Path
+from typing import List
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -42,6 +44,33 @@ activities = {
 }
 
 
+class AccessReconciliationRequest(BaseModel):
+    system_access_list: List[str]
+    database_access_list: List[str]
+
+
+class AccessReconciliationResult(BaseModel):
+    grant_system_access: List[str]
+    revoke_system_access: List[str]
+    matched_access: List[str]
+
+
+class AccessReconciliationAgent:
+    @staticmethod
+    def reconcile(system_access_list: List[str], database_access_list: List[str]) -> AccessReconciliationResult:
+        system_access = set(system_access_list)
+        database_access = set(database_access_list)
+
+        return AccessReconciliationResult(
+            grant_system_access=sorted(database_access - system_access),
+            revoke_system_access=sorted(system_access - database_access),
+            matched_access=sorted(system_access & database_access),
+        )
+
+
+access_reconciliation_agent = AccessReconciliationAgent()
+
+
 @app.get("/")
 def root():
     return RedirectResponse(url="/static/index.html")
@@ -50,6 +79,13 @@ def root():
 @app.get("/activities")
 def get_activities():
     return activities
+
+
+@app.post("/access/reconcile", response_model=AccessReconciliationResult)
+def reconcile_access(request: AccessReconciliationRequest):
+    return access_reconciliation_agent.reconcile(
+        request.system_access_list, request.database_access_list
+    )
 
 
 @app.post("/activities/{activity_name}/signup")
